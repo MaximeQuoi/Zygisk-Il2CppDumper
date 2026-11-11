@@ -1,9 +1,9 @@
 ext {
     moduleLibraryName = "il2cppdumper"
-    magiskModuleId = "zygisk_il2cppdumper"
-    moduleName = "Il2CppDumper"
-    moduleAuthor = "Perfare"
-    moduleDescription = "Il2CppDumper Zygisk version."
-    moduleVersion = "v1.2.0"
-    moduleVersionCode = 1
+    magiskModuleId = "zygisk_il2cppdumper_v2"
+    moduleName = "Il2CppDumper v2"
+    moduleAuthor = "Perfare, v2 fork"
+    moduleDescription = "Il2CppDumper Zygisk version with process freeze (ptrace via root companion)."
+    moduleVersion = "v2.5.0"
+    moduleVersionCode = 8
 }

@@ -7,10 +7,19 @@
 
 #include <android/log.h>
 
-#define LOG_TAG "Perfare"
-#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
-#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
+#define LOG_TAG "Il2CppDumperV2"
+
+// Opens <data_dir>/files/dumper.log in append mode. Every log line is also
+// written there, so the user can retrieve a report without adb.
+// Safe to call more than once; the first successful call wins.
+void dlog_init(const char *data_dir);
+
+// Writes one line to logcat and, when dlog_init() succeeded, to the log file.
+void dlog(int priority, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+
+#define LOGD(...) dlog(ANDROID_LOG_DEBUG, __VA_ARGS__)
+#define LOGW(...) dlog(ANDROID_LOG_WARN, __VA_ARGS__)
+#define LOGE(...) dlog(ANDROID_LOG_ERROR, __VA_ARGS__)
+#define LOGI(...) dlog(ANDROID_LOG_INFO, __VA_ARGS__)
 
 #endif //ZYGISK_IL2CPPDUMPER_LOG_H

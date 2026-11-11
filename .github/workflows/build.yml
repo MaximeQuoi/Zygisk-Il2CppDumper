@@ -1,27 +1,97 @@
 name: Build
+
 on:
   workflow_dispatch:
-      inputs:
-        package_name:
-          description: "Package name of the game:"
-          required: true
+    inputs:
+      package_name:
+        description: "Package name of the target game (for example com.example.game)"
+        required: true
+        type: string
+      freeze:
+        description: "Freeze the process before dumping"
+        required: false
+        default: "1"
+        type: choice
+        options:
+          - "1"
+          - "0"
+      freeze_timeout_ms:
+        description: "How long to wait for the other threads to park (ms)"
+        required: false
+        default: "3000"
+        type: string
+      delay_before_dump_ms:
+        description: "Extra delay before freezing/dumping (ms)"
+        required: false
+        default: "0"
+        type: string
+      freeze_hold_ms:
+        description: "Keep the process frozen after the dump starts (ms, 0 = disabled)"
+        required: false
+        default: "0"
+        type: string
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - uses: actions/setup-java@v3
-      with:
-        distribution: temurin
-        java-version: 11
-        cache: gradle
-    - run: |
-        chmod +x ./gradlew
-        sed -i 's/moduleDescription = "/moduleDescription = "(${{ github.event.inputs.package_name }}) /g' module.gradle
-        sed -i "s/com.game.packagename/${{ github.event.inputs.package_name }}/g" module/src/main/cpp/game.h
-        ./gradlew :module:assembleRelease
-    - uses: actions/upload-artifact@v4
-      with:
-        name: zygisk-il2cppdumper
-        path: out/magisk_module_release/
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Configure target and freeze options
+        env:
+          PACKAGE_NAME: ${{ inputs.package_name }}
+          FREEZE: ${{ inputs.freeze }}
+          FREEZE_TIMEOUT_MS: ${{ inputs.freeze_timeout_ms }}
+          DELAY_BEFORE_DUMP_MS: ${{ inputs.delay_before_dump_ms }}
+          FREEZE_HOLD_MS: ${{ inputs.freeze_hold_ms }}
+        run: |
+          set -euo pipefail
+
+          if ! printf '%s' "$PACKAGE_NAME" | grep -Eq '^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)+$'; then
+            echo "::error::Invalid package name: $PACKAGE_NAME"
+            exit 1
+          fi
+          case "$FREEZE" in 0|1) ;; *) echo "::error::freeze must be 0 or 1"; exit 1 ;; esac
+          case "$FREEZE_TIMEOUT_MS" in ''|*[!0-9]*) echo "::error::freeze_timeout_ms must be a number"; exit 1 ;; esac
+          case "$DELAY_BEFORE_DUMP_MS" in ''|*[!0-9]*) echo "::error::delay_before_dump_ms must be a number"; exit 1 ;; esac
+          case "$FREEZE_HOLD_MS" in ''|*[!0-9]*) echo "::error::freeze_hold_ms must be a number"; exit 1 ;; esac
+
+          cat > module/src/main/cpp/game.h <<EOF
+          #ifndef ZYGISK_IL2CPPDUMPER_GAME_H
+          #define ZYGISK_IL2CPPDUMPER_GAME_H
+
+          #ifndef GamePackageName
+          #define GamePackageName "$PACKAGE_NAME"
+          #endif
+
+          #endif // ZYGISK_IL2CPPDUMPER_GAME_H
+          EOF
+
+          sed -i "s/^#define DUMPER_FREEZE_BEFORE_DUMP .*/#define DUMPER_FREEZE_BEFORE_DUMP $FREEZE/" module/src/main/cpp/config.h
+          sed -i "s/^#define DUMPER_FREEZE_TIMEOUT_MS .*/#define DUMPER_FREEZE_TIMEOUT_MS $FREEZE_TIMEOUT_MS/" module/src/main/cpp/config.h
+          sed -i "s/^#define DUMPER_DELAY_BEFORE_DUMP_MS .*/#define DUMPER_DELAY_BEFORE_DUMP_MS $DELAY_BEFORE_DUMP_MS/" module/src/main/cpp/config.h
+          sed -i "s/^#define DUMPER_FREEZE_HOLD_MS .*/#define DUMPER_FREEZE_HOLD_MS $FREEZE_HOLD_MS/" module/src/main/cpp/config.h
+
+          # Show the generated configuration in the build log.
+          grep -E "GamePackageName|DUMPER_FREEZE|DUMPER_DELAY" module/src/main/cpp/game.h module/src/main/cpp/config.h
+
+      - name: Build the Magisk module
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon :module:assembleRelease
+
+      - name: Upload the Magisk module
+        uses: actions/upload-artifact@v4
+        with:
+          name: zygisk-il2cppdumper-v2
+          path: out/*.zip
+          if-no-files-found: error
